@@ -1,7 +1,8 @@
 import os
 from notion_client import Client
 from core.schemas import MeetingPayload
-
+from dotenv import load_dotenv
+load_dotenv()
 
 def get_notion_client() -> Client:
     token = os.getenv("NOTION_API_KEY")

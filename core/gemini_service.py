@@ -21,7 +21,7 @@ def parse_handwritten_notes(image: Image.Image) -> MeetingPayload:
     
     # This is where you specify the faster flash model
     response = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3.7-flash",
         contents=[image, prompt],
         config=dict(
             response_mime_type="application/json",
