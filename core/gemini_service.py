@@ -11,7 +11,7 @@ client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 def parse_handwritten_notes(image: Image.Image) -> MeetingPayload:
     """
     Takes a PIL Image of handwritten notes and extracts structured meeting minutes
-    using Gemini 2.5 Flash.
+    using gemini-3.7-flash.
     """
     prompt = (
         "Transcribe and convert these handwritten meeting notes into structured minutes. "
