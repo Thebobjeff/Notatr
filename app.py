@@ -1,8 +1,9 @@
+import os
+import re
+from urllib.parse import urlparse
 import streamlit as st
 from pypdf import PdfReader
 from PIL import Image
-import re
-from urllib.parse import urlparse
 
 # Import your Gemini and Notion services
 from core.gemini_service import parse_handwritten_notes, answer_question_about_notes
@@ -122,14 +123,11 @@ with st.sidebar:
                 else "e.g., 18f28b49..."
             ),
             help=(
-                "Paste the URL or Page ID where the new subpage should be"
-                " created."
+                "Paste the URL or Page ID where the new subpage should be created."
             ),
         )
 
-        if parent_input_val and is_valid_notion_input(
-            parent_input_val, input_type
-        ):
+        if parent_input_val and is_valid_notion_input(parent_input_val, input_type):
             st.caption(
                 f"✅ Valid Parent ID: `{extract_notion_id(parent_input_val)}`"
             )
@@ -214,7 +212,7 @@ col1, col2 = st.columns([1, 1], gap="large")
 with col1:
     st.subheader("1. Upload Notes")
     uploaded_files = st.file_uploader(
-"Choose images or PDFs of your notes",
+        "Choose images or PDFs of your notes",
         type=["jpg", "jpeg", "png", "pdf"],
         accept_multiple_files=True,
         help="Supports photos (JPG/PNG) and PDF documents.",
@@ -268,7 +266,6 @@ with col2:
                     try:
                         # Branch handling for PDFs vs images
                         if file.name.lower().endswith('.pdf'):
-                            # Read PDF text
                             reader = PdfReader(file)
                             text_pages = [page.extract_text() or "" for page in reader.pages]
                             pdf_text = "\n".join(text_pages)
@@ -276,7 +273,6 @@ with col2:
                                 pdf_text, api_key=gemini_api_key
                             )
                         else:
-                            # Convert byte stream to PIL Image
                             image = Image.open(file)
                             structured_data = parse_handwritten_notes(
                                 image, api_key=gemini_api_key
