@@ -180,13 +180,14 @@ def push_meeting_notes_to_notion(payload: MeetingPayload) -> str:
         if payload.date_detected
         else payload.meeting_title
     )
+    
     created_page = notion.pages.create(
         parent={"page_id": parent_page_id},
         icon={"type": "emoji", "emoji": "📝"},
         properties={
-            "title": {
-                "title": [{"type": "text", "text": {"content": page_title}}]
-            }
+            "Name": { 
+            "title": [{"text": {"content": payload.meeting_title if hasattr(payload, 'meeting_title') else payload.get('meeting_title', 'Untitled')}}]
+        }
         },
         children=children_blocks,
     )

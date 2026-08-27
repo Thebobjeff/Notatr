@@ -58,6 +58,7 @@ if "create_new_page" not in st.session_state:
     st.session_state["create_new_page"] = False
 if "custom_title" not in st.session_state:
     st.session_state["custom_title"] = ""
+    
 
 # --- Sidebar Configuration ---
 with st.sidebar:
@@ -256,9 +257,11 @@ with col2:
 
                         # Override the AI-generated title if the user provided a specific one
                         if custom_title:
-                            structured_data.meeting_title = f"{custom_title} ({file.name})"
-
-                        st.write(f"📤 Exporting items from {file.name} to Notion...")
+                            new_title = f"{custom_title} ({file.name})"
+                        if hasattr(structured_data, 'meeting_title'):
+                            structured_data.meeting_title = new_title
+                        elif isinstance(structured_data, dict):
+                            structured_data['meeting_title'] = new_title
 
                         # Execute Notion sync using the payload; pass active_id when available
                         notion_url = push_meeting_notes_to_notion(
