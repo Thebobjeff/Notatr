@@ -10,27 +10,15 @@ from core.notion_service import push_meeting_notes_to_notion
 # Load environment variables
 load_dotenv()
 
-st.set_page_config(page_title="Meeting Notes Digitizer", page_icon="📝")
+st.set_page_config(page_title="Meeting Notes Digitizer", page_icon="📝", layout="wide")
 
 st.title("📝 Meeting Notes to Notion")
 st.write("Upload a picture of your handwritten meeting notes, and AI will extract the action items to Notion.")
 
-# uploaded_file = st.file_uploader("Upload meeting notes...", type=["jpg", "jpeg", "png"])
-
-# if uploaded_file is not None:
-#     st.image(uploaded_file, caption="Uploaded Notes", use_container_width=True)
-    
-#     if st.button("Extract Action Items"):
-#         st.info("Gemini vision processing will happen here...")
-#         # TODO: Call core.gemini_service.py
-#         # TODO: Push results via core.notion_service.py
-
-# --- Main Workspace ---
 col1, col2 = st.columns([1, 1], gap="large")
 
 with col1:
     st.subheader("1. Upload Notes")
-    # Enable multiple file uploads
     uploaded_files = st.file_uploader(
         "Choose images of your notes", 
         type=["jpg", "jpeg", "png"],
@@ -38,7 +26,6 @@ with col1:
         help="Supports clear photos of whiteboards, notebooks, or typed documents."
     )
     
-    # Display preview for all uploaded files
     if uploaded_files:
         st.write(f"**{len(uploaded_files)} file(s) uploaded:**")
         for file in uploaded_files:
@@ -56,14 +43,31 @@ with col2:
         
         if st.button("🚀 Process All & Push to Notion", type="primary", use_container_width=True):
             with st.status("Processing your notes...", expanded=True) as status:
-                # Loop through each uploaded file
+                generated_urls = []
+                
                 for index, file in enumerate(uploaded_files, start=1):
                     st.write(f"🔍 Reading image {index}/{len(uploaded_files)} ({file.name})...")
-                    # action_items = extract_action_items(file)
-                    
-                    st.write(f"📤 Exporting items from {file.name} to Notion...")
-                    # send_to_notion(action_items)
+                    try:
+                        # Convert byte stream to PIL Image
+                        image = Image.open(file)
+                        
+                        # Execute Gemini extraction
+                        structured_data = parse_handwritten_notes(image)
+                        
+                        st.write(f"📤 Exporting items from {file.name} to Notion...")
+                        
+                        # Execute Notion sync 
+                        notion_url = push_meeting_notes_to_notion(structured_data)
+                        generated_urls.append((file.name, notion_url))
+                        
+                    except Exception as e:
+                        st.error(f"Failed processing {file.name}: {e}")
                 
-                status.update(label="All files processed and pushed to Notion!", state="complete", expanded=False)
+                status.update(label="Batch processing complete!", state="complete", expanded=False)
             
-            st.balloons()
+            # Render success links
+            for name, url in generated_urls:
+                st.markdown(f"✅ **{name}**: [View in Notion]({url})")
+                
+            if generated_urls:
+                st.balloons()
