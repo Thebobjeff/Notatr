@@ -4,6 +4,9 @@ from urllib.parse import urlparse
 import streamlit as st
 from pypdf import PdfReader
 from PIL import Image
+from dotenv import load_dotenv
+load_dotenv()
+
 
 # Import your Gemini and Notion services
 from core.gemini_service import parse_handwritten_notes, answer_question_about_notes
@@ -61,16 +64,8 @@ if "custom_title" not in st.session_state:
     
 
 # --- Sidebar Configuration ---
-with st.sidebar:
-    st.header("🔑 API Configuration")
-    gemini_api_key = st.text_input(
-        "Gemini API Key",
-        value=st.session_state["gemini_api_key"],
-        type="password",
-        placeholder="Enter your Gemini API key",
-        help="Used for this session and not written to disk.",
-    )
-    st.session_state["gemini_api_key"] = gemini_api_key.strip()
+with st.sidebar:     
+    st.session_state["gemini_api_key"] = os.getenv("GOOGLE_API_KEY")
 
     notion_api_key = st.text_input(
         "Notion Integration Token",
