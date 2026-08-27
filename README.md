@@ -3,7 +3,7 @@
 > Transform handwritten meeting notes into actionable Notion tasks using Gemini AI.
 
 ## 💥 The Problem
-Students and professionals waste hours deciphering scribbled notes because converting handwritten pages into structured tasks is tedious work. Insights get buried, and valuable time is spent re-reading notebooks instead of executing.
+Students and professionals waste hours deciphering scribbled notes because converting handwritten pages into structured tasks is tedious work. Insights get buried, and valuable time is spent transcribing notebooks instead of learning or executing.
 
 ## ✨ The Solution
 **Notatr** is a Streamlit application powered by Gemini Vision AI. Simply upload photos of your handwritten notes or whiteboards, and the app automatically extracts actionable tasks and syncs them straight into your Notion workspace.
