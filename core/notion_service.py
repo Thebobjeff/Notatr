@@ -17,7 +17,7 @@ def push_meeting_notes_to_notion(payload: MeetingPayload) -> str:
     Returns the URL of the created Notion page.
     """
     notion = get_notion_client()
-    parent_page_id = os.getenv("NOTION_PAGE_ID")
+    parent_page_id = os.getenv("NOTION_PARENT_PAGE_ID")
     if not parent_page_id:
         raise ValueError("NOTION_PAGE_ID environment variable is missing.")
 

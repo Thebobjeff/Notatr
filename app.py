@@ -1,14 +1,19 @@
-import os
-import re
-from urllib.parse import urlparse
 import streamlit as st
 from dotenv import load_dotenv
 from pypdf import PdfReader
+import os
+from PIL import Image
+import re
+from urllib.parse import urlparse
+
+# Import your Gemini and Notion services
+from core.gemini_service import parse_handwritten_notes, answer_question_about_notes
+from core.notion_service import push_meeting_notes_to_notion
 
 # Load environment variables
 load_dotenv()
 
-st.set_page_config(page_title="Meeting Notes Digitizer", page_icon="📝")
+st.set_page_config(page_title="Meeting Notes Digitizer", page_icon="📝", layout="wide")
 
 
 def extract_notion_id(input_str: str) -> str | None:
@@ -42,21 +47,6 @@ def is_valid_notion_input(input_str: str, input_type: str) -> bool:
     is_valid_domain = "notion" in parsed.netloc.lower()
 
     return is_valid_scheme and is_valid_domain
-
-
-# Placeholder functions for external integrations (Gemini & Notion API)
-def parse_handwritten_notes(file):
-    """Placeholder function for Gemini extraction."""
-    # Dummy structure representing AI-extracted data
-    class StructuredData:
-        def __init__(self):
-            self.meeting_title = "Extracted Action Items"
-    return StructuredData()
-
-
-def push_meeting_notes_to_notion(structured_data, target_id=None):
-    """Placeholder function for pushing data to Notion via API."""
-    return f"https://www.notion.so/{target_id or 'default'}"
 
 
 # --- Session State Initialization ---
@@ -202,12 +192,12 @@ col1, col2 = st.columns([1, 1], gap="large")
 with col1:
     st.subheader("1. Upload Notes")
     uploaded_files = st.file_uploader(
-        "Choose images or PDFs of your notes",
+"Choose images or PDFs of your notes",
         type=["jpg", "jpeg", "png", "pdf"],
         accept_multiple_files=True,
         help="Supports photos (JPG/PNG) and PDF documents.",
     )
-
+    
     if uploaded_files:
         st.write(f"**{len(uploaded_files)} file(s) uploaded:**")
         for file in uploaded_files:
@@ -219,7 +209,7 @@ with col1:
 
 with col2:
     st.subheader("2. Extract & Sync")
-
+    
     if not uploaded_files:
         st.info("👈 Upload one or more files on the left to get started.")
     elif not active_dest or not is_valid_notion_input(
@@ -244,27 +234,41 @@ with col2:
 
         if st.button(button_label, type="primary", use_container_width=True):
             with st.status("Processing your notes...", expanded=True) as status:
+                generated_urls = []
 
                 for index, file in enumerate(uploaded_files, start=1):
                     st.write(
-                        f"🔍 Reading file {index}/{len(uploaded_files)}"
-                        f" ({file.name})..."
+                        f"🔍 Reading file {index}/{len(uploaded_files)} ({file.name})..."
                     )
 
-                    # Execute Gemini extraction
-                    structured_data = parse_handwritten_notes(file)
+                    try:
+                        # Branch handling for PDFs vs images
+                        if file.name.lower().endswith('.pdf'):
+                            # Read PDF text
+                            reader = PdfReader(file)
+                            text_pages = [page.extract_text() or "" for page in reader.pages]
+                            pdf_text = "\n".join(text_pages)
+                            structured_data = parse_handwritten_notes(pdf_text)
+                        else:
+                            # Convert byte stream to PIL Image
+                            image = Image.open(file)
+                            structured_data = parse_handwritten_notes(image)
 
-                    # Override the AI-generated title if the user provided a specific one
-                    if custom_title:
-                        # Appending the file name ensures unique titles during batch processing
-                        structured_data.meeting_title = f"{custom_title} ({file.name})"
+                        # Override the AI-generated title if the user provided a specific one
+                        if custom_title:
+                            structured_data.meeting_title = f"{custom_title} ({file.name})"
 
-                    st.write(f"📤 Exporting items from {file.name} to Notion...")
+                        st.write(f"📤 Exporting items from {file.name} to Notion...")
 
-                    # Execute Notion sync using the modified payload
-                    notion_url = push_meeting_notes_to_notion(structured_data, target_id=active_id)
+                        # Execute Notion sync using the payload; pass active_id when available
+                        notion_url = push_meeting_notes_to_notion(
+                            structured_data, target_id=active_id if active_id else None
+                        )
 
-                    st.write(f"✅ Exported: [{file.name}]({notion_url})")
+                        generated_urls.append((file.name, notion_url))
+
+                    except Exception as e:
+                        st.error(f"Failed processing {file.name}: {e}")
 
                 status.update(
                     label="All files processed and pushed to Notion!",
@@ -272,4 +276,9 @@ with col2:
                     expanded=False,
                 )
 
-            st.balloons()
+            # Render success links
+            for name, url in generated_urls:
+                st.markdown(f"✅ **{name}**: [View in Notion]({url})")
+
+            if generated_urls:
+                st.balloons()
