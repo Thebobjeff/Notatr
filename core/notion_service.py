@@ -1,25 +1,52 @@
-import os
 from notion_client import Client
 from core.schemas import MeetingPayload
-from dotenv import load_dotenv
-load_dotenv()
 
-def get_notion_client() -> Client:
-    token = os.getenv("NOTION_API_KEY")
+
+def get_notion_client(api_key: str) -> Client:
+    token = api_key.strip() if api_key else ""
     if not token:
-        raise ValueError("NOTION_API_KEY environment variable is missing.")
+        raise ValueError("A Notion integration token is required.")
     return Client(auth=token)
 
 
-def push_meeting_notes_to_notion(payload: MeetingPayload) -> str:
+def get_parent_and_title_property(notion: Client, target_id: str) -> tuple[dict, str]:
+    """Resolve a Notion page or database ID into a create-page parent."""
+    try:
+        notion.pages.retrieve(page_id=target_id)
+    except Exception as page_error:
+        try:
+            database = notion.databases.retrieve(database_id=target_id)
+        except Exception as database_error:
+            raise ValueError(
+                "The Notion URL/ID could not be accessed. Confirm the ID and "
+                "share the page or database with your Notion integration."
+            ) from database_error
+
+        title_properties = [
+            name
+            for name, definition in database.get("properties", {}).items()
+            if definition.get("type") == "title"
+        ]
+        if not title_properties:
+            raise ValueError("The Notion database has no title property.")
+        return {"database_id": target_id}, title_properties[0]
+
+    return {"page_id": target_id}, "title"
+
+
+def push_meeting_notes_to_notion(
+    payload: MeetingPayload, target_id: str | None = None, api_key: str = ""
+) -> str:
     """Creates a new formatted Notion page under the parent page defined in NOTION_PAGE_ID.
 
     Returns the URL of the created Notion page.
     """
-    notion = get_notion_client()
-    parent_page_id = os.getenv("NOTION_PARENT_PAGE_ID")
+    notion = get_notion_client(api_key)
+    parent_page_id = target_id
     if not parent_page_id:
-        raise ValueError("NOTION_PAGE_ID environment variable is missing.")
+        raise ValueError("A Notion parent page URL or ID is required.")
+
+    parent, title_property = get_parent_and_title_property(notion, parent_page_id)
 
     # Build Notion Block elements dynamically
     children_blocks = []
@@ -174,20 +201,24 @@ def push_meeting_notes_to_notion(payload: MeetingPayload) -> str:
             ]
         )
 
-    # Create the page under parent page
-    page_title = (
-        f"{payload.meeting_title} ({payload.date_detected})"
-        if payload.date_detected
-        else payload.meeting_title
-    )
-    
+    # Create the page under either a page or database parent.
     created_page = notion.pages.create(
-        parent={"page_id": parent_page_id},
+        parent=parent,
         icon={"type": "emoji", "emoji": "📝"},
         properties={
-            "Name": { 
-            "title": [{"text": {"content": payload.meeting_title if hasattr(payload, 'meeting_title') else payload.get('meeting_title', 'Untitled')}}]
-        }
+            title_property: {
+                "title": [
+                    {
+                        "text": {
+                            "content": (
+                                payload.meeting_title
+                                if hasattr(payload, "meeting_title")
+                                else payload.get("meeting_title", "Untitled")
+                            )
+                        }
+                    }
+                ]
+            }
         },
         children=children_blocks,
     )

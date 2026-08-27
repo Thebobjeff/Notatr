@@ -1,14 +1,19 @@
  
-import os
 from google import genai
 from PIL import Image
 from core.schemas import MeetingPayload
-from dotenv import load_dotenv
-load_dotenv()
-# Initialize the client (it automatically looks for GEMINI_API_KEY in your environment)
-client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
-def parse_handwritten_notes(image: Image.Image) -> MeetingPayload:
+
+def get_gemini_client(api_key: str = "") -> genai.Client:
+    token = api_key.strip() if api_key else ""
+    if not token:
+        raise ValueError("A Gemini API key is required.")
+    return genai.Client(api_key=token)
+
+
+def parse_handwritten_notes(
+    image: Image.Image, api_key: str | None = None
+) -> MeetingPayload:
     """
     Takes a PIL Image of handwritten notes and extracts structured meeting minutes
     using gemini-3.7-flash.
@@ -20,8 +25,9 @@ def parse_handwritten_notes(image: Image.Image) -> MeetingPayload:
     )
     
     # This is where you specify the faster flash model
+    client = get_gemini_client(api_key)
     response = client.models.generate_content(
-        model="gemini-3.7-flash",
+        model="gemini-3.6-flash",
         contents=[image, prompt],
         config=dict(
             response_mime_type="application/json",
@@ -33,7 +39,9 @@ def parse_handwritten_notes(image: Image.Image) -> MeetingPayload:
     # Validate and return the response as a Python object based on your schema
     return MeetingPayload.model_validate_json(response.text)
 
-def answer_question_about_notes(payload: MeetingPayload, question: str) -> str:
+def answer_question_about_notes(
+    payload: MeetingPayload, question: str, api_key: str | None = None
+) -> str:
     """
     Uses Gemini to answer user questions based strictly on the extracted meeting notes.
     """
@@ -49,6 +57,7 @@ def answer_question_about_notes(payload: MeetingPayload, question: str) -> str:
     )
     
     # We can reuse the flash model for blazing fast chat responses
+    client = get_gemini_client(api_key)
     response = client.models.generate_content(
         model="gemini-2.5-flash",
         contents=prompt

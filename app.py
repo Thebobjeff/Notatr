@@ -1,7 +1,5 @@
 import streamlit as st
-from dotenv import load_dotenv
 from pypdf import PdfReader
-import os
 from PIL import Image
 import re
 from urllib.parse import urlparse
@@ -9,9 +7,6 @@ from urllib.parse import urlparse
 # Import your Gemini and Notion services
 from core.gemini_service import parse_handwritten_notes, answer_question_about_notes
 from core.notion_service import push_meeting_notes_to_notion
-
-# Load environment variables
-load_dotenv()
 
 st.set_page_config(page_title="Meeting Notes Digitizer", page_icon="📝", layout="wide")
 
@@ -51,7 +46,11 @@ def is_valid_notion_input(input_str: str, input_type: str) -> bool:
 
 # --- Session State Initialization ---
 if "notion_destination" not in st.session_state:
-    st.session_state["notion_destination"] = os.getenv("NOTION_URL", "")
+    st.session_state["notion_destination"] = ""
+if "gemini_api_key" not in st.session_state:
+    st.session_state["gemini_api_key"] = ""
+if "notion_api_key" not in st.session_state:
+    st.session_state["notion_api_key"] = ""
 if "input_type" not in st.session_state:
     st.session_state["input_type"] = "URL"
 if "create_new_page" not in st.session_state:
@@ -62,6 +61,26 @@ if "custom_title" not in st.session_state:
 
 # --- Sidebar Configuration ---
 with st.sidebar:
+    st.header("🔑 API Configuration")
+    gemini_api_key = st.text_input(
+        "Gemini API Key",
+        value=st.session_state["gemini_api_key"],
+        type="password",
+        placeholder="Enter your Gemini API key",
+        help="Used for this session and not written to disk.",
+    )
+    st.session_state["gemini_api_key"] = gemini_api_key.strip()
+
+    notion_api_key = st.text_input(
+        "Notion Integration Token",
+        value=st.session_state["notion_api_key"],
+        type="password",
+        placeholder="Enter your Notion integration token",
+        help="Used for this session and not written to disk.",
+    )
+    st.session_state["notion_api_key"] = notion_api_key.strip()
+
+    st.divider()
     st.header("⚙️ Notion Configuration")
 
     # Mode Selection: Sync to existing vs Create new page
@@ -173,6 +192,8 @@ current_type = st.session_state["input_type"]
 active_id = extract_notion_id(active_dest)
 create_page_mode = st.session_state["create_new_page"]
 custom_title = st.session_state["custom_title"]
+gemini_api_key = st.session_state["gemini_api_key"]
+notion_api_key = st.session_state["notion_api_key"]
 
 if active_dest and is_valid_notion_input(active_dest, current_type):
     if create_page_mode:
@@ -213,12 +234,14 @@ with col2:
     
     if not uploaded_files:
         st.info("👈 Upload one or more files on the left to get started.")
-    elif not active_dest or not is_valid_notion_input(
-        active_dest, current_type
+    elif (
+        not active_dest
+        or not is_valid_notion_input(active_dest, current_type)
+        or not notion_api_key
     ):
         st.error(
-            "👈 Configure a valid Notion URL or Page ID in the sidebar before"
-            " processing."
+            "👈 Configure a valid Notion URL/Page ID and integration token in"
+            " the sidebar before processing."
         )
     else:
         st.success(f"{len(uploaded_files)} file(s) ready for processing.")
@@ -249,23 +272,37 @@ with col2:
                             reader = PdfReader(file)
                             text_pages = [page.extract_text() or "" for page in reader.pages]
                             pdf_text = "\n".join(text_pages)
-                            structured_data = parse_handwritten_notes(pdf_text)
+                            structured_data = parse_handwritten_notes(
+                                pdf_text, api_key=gemini_api_key
+                            )
                         else:
                             # Convert byte stream to PIL Image
                             image = Image.open(file)
-                            structured_data = parse_handwritten_notes(image)
+                            structured_data = parse_handwritten_notes(
+                                image, api_key=gemini_api_key
+                            )
 
                         # Override the AI-generated title if the user provided a specific one
-                        if custom_title:
-                            new_title = f"{custom_title} ({file.name})"
                         if hasattr(structured_data, 'meeting_title'):
+                            new_title = (
+                                f"{custom_title} ({file.name})"
+                                if custom_title
+                                else structured_data.meeting_title
+                            )
                             structured_data.meeting_title = new_title
                         elif isinstance(structured_data, dict):
+                            new_title = (
+                                f"{custom_title} ({file.name})"
+                                if custom_title
+                                else structured_data.get('meeting_title', 'Untitled')
+                            )
                             structured_data['meeting_title'] = new_title
 
                         # Execute Notion sync using the payload; pass active_id when available
                         notion_url = push_meeting_notes_to_notion(
-                            structured_data, target_id=active_id if active_id else None
+                            structured_data,
+                            target_id=active_id if active_id else None,
+                            api_key=notion_api_key,
                         )
 
                         generated_urls.append((file.name, notion_url))
