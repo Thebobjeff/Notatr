@@ -1,10 +1,10 @@
+import os
+import re
+from urllib.parse import urlparse
 import streamlit as st
 from dotenv import load_dotenv
 from pypdf import PdfReader
-import os
 from PIL import Image
-import re
-from urllib.parse import urlparse
 
 # Import your Gemini and Notion services
 from core.gemini_service import parse_handwritten_notes, answer_question_about_notes
@@ -13,8 +13,112 @@ from core.notion_service import push_meeting_notes_to_notion
 # Load environment variables
 load_dotenv()
 
-st.set_page_config(page_title="Meeting Notes Digitizer", page_icon="📝", layout="wide")
+# --- 1. Page Config must come first ---
+st.set_page_config(
+    page_title="Meeting Notes Digitizer", 
+    page_icon="📝", 
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
+# --- 2. Custom CSS styling goes right here ---
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Pacifico&family=Roboto:wght@400;700&display=swap');
+
+    /* Hide the top Streamlit header bar */
+    header {
+        visibility: hidden;
+    }
+
+    /* Hide the sidebar collapse/close button */
+    [data-testid="collapsedControl"] {
+        display: none !important;
+    }
+    
+    /* Ensure sidebar stays visible and doesn't close */
+    [data-testid="stSidebar"] {
+        min-width: 300px !important;
+        background-color: #000000 !important; /* Sidebar dark background */
+    }
+
+    /* Force all text inside sidebar to be white */
+    [data-testid="stSidebar"] *, [data-testid="stSidebar"] label, [data-testid="stSidebar"] span, [data-testid="stSidebar"] p, [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
+        color: #ffffff !important;
+    }
+
+    /* Match the Notion Configuration header style to the main h2 header style */
+    [data-testid="stSidebar"] h2 {
+        font-family: 'Times New Roman', Times, serif !important;
+        font-weight: 900 !important;
+        font-size: 1.8rem !important;
+        color: #ffffff !important;
+    }
+
+    .stApp {
+        background-color: #fff8c5;
+        background-image: linear-gradient(#f0e6b5 0.1em, transparent 0.1em);
+        background-size: 100% 1.8em;
+    }
+    
+    .block-container {
+        padding-top: 1rem !important;
+        max-width: 1000px;
+        margin: 0 auto;
+        min-height: 85vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        overflow-y: auto; /* Enables smooth scrolling back inside container */
+    }
+    
+    h1, h2, h3, h4, h5, h6, p, span, label {
+        color: #000000 !important;
+    }
+
+    h2 {
+        font-family: 'Times New Roman', Times, serif !important;
+        font-weight: 900 !important;
+        font-size: 1.8rem !important;
+    }
+    
+    h1 {
+        font-family: 'Roboto' !important;
+        font-weight: 550 !important;
+    }
+    
+    h1 + p {
+        font-size: 1.15rem !important;
+        font-weight: 600 !important;
+        color: #222222 !important;
+        margin-bottom: 2rem !important;
+    }
+
+    [data-testid="stFileUploader"], [data-testid="stTextAreaRootElement"] {
+        background-color: rgba(0, 0, 0, 0.7) !important;
+        border-radius: 10px;
+        padding: 10px;
+        width: 100%;
+    }
+
+    [data-testid="stFileUploader"] *, [data-testid="stTextAreaRootElement"] *, [data-testid="stTextAreaRootElement"] textarea {
+        color: #ffffff !important;
+    }
+
+    .stAlert {
+        background-color: #000000 !important;
+        border: 1px solid #000000 !important;
+        border-radius: 10px !important;
+    }
+    
+    .stAlert * {
+        color: #ffffff !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 def extract_notion_id(input_str: str) -> str | None:
     """Extract a 32-character hex Notion ID from a raw ID string or a Notion URL."""
@@ -103,14 +207,11 @@ with st.sidebar:
                 else "e.g., 18f28b49..."
             ),
             help=(
-                "Paste the URL or Page ID where the new subpage should be"
-                " created."
+                "Paste the URL or Page ID where the new subpage should be created."
             ),
         )
 
-        if parent_input_val and is_valid_notion_input(
-            parent_input_val, input_type
-        ):
+        if parent_input_val and is_valid_notion_input(parent_input_val, input_type):
             st.caption(
                 f"✅ Valid Parent ID: `{extract_notion_id(parent_input_val)}`"
             )
@@ -193,7 +294,7 @@ col1, col2 = st.columns([1, 1], gap="large")
 with col1:
     st.subheader("1. Upload Notes")
     uploaded_files = st.file_uploader(
-"Choose images or PDFs of your notes",
+        "Choose images or PDFs of your notes",
         type=["jpg", "jpeg", "png", "pdf"],
         accept_multiple_files=True,
         help="Supports photos (JPG/PNG) and PDF documents.",
@@ -245,23 +346,21 @@ with col2:
                     try:
                         # Branch handling for PDFs vs images
                         if file.name.lower().endswith('.pdf'):
-                            # Read PDF text
                             reader = PdfReader(file)
                             text_pages = [page.extract_text() or "" for page in reader.pages]
                             pdf_text = "\n".join(text_pages)
                             structured_data = parse_handwritten_notes(pdf_text)
                         else:
-                            # Convert byte stream to PIL Image
                             image = Image.open(file)
                             structured_data = parse_handwritten_notes(image)
 
                         # Override the AI-generated title if the user provided a specific one
                         if custom_title:
                             new_title = f"{custom_title} ({file.name})"
-                        if hasattr(structured_data, 'meeting_title'):
-                            structured_data.meeting_title = new_title
-                        elif isinstance(structured_data, dict):
-                            structured_data['meeting_title'] = new_title
+                            if hasattr(structured_data, 'meeting_title'):
+                                structured_data.meeting_title = new_title
+                            elif isinstance(structured_data, dict):
+                                structured_data['meeting_title'] = new_title
 
                         # Execute Notion sync using the payload; pass active_id when available
                         notion_url = push_meeting_notes_to_notion(
