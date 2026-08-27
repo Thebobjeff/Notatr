@@ -3,6 +3,7 @@ import re
 from urllib.parse import urlparse
 import streamlit as st
 from dotenv import load_dotenv
+from pypdf import PdfReader
 
 # Load environment variables
 load_dotenv()
@@ -22,7 +23,6 @@ def extract_notion_id(input_str: str) -> str | None:
     match = re.search(id_pattern, cleaned_str, re.IGNORECASE)
 
     if match:
-        # Return ID without hyphens
         return match.group(1).replace("-", "")
     return None
 
@@ -36,14 +36,27 @@ def is_valid_notion_input(input_str: str, input_type: str) -> bool:
     if input_type == "Page ID":
         return len(notion_id) == 32
 
-    # If URL, check domain in addition to finding a valid ID
+    # Accepts notion.so, notion.site, app.notion.com, etc.
     parsed = urlparse(input_str.strip())
     is_valid_scheme = parsed.scheme in ["http", "https"]
-    is_valid_domain = parsed.netloc.endswith(
-        "notion.so"
-    ) or parsed.netloc.endswith("notion.site")
+    is_valid_domain = "notion" in parsed.netloc.lower()
 
     return is_valid_scheme and is_valid_domain
+
+
+# Placeholder functions for external integrations (Gemini & Notion API)
+def parse_handwritten_notes(file):
+    """Placeholder function for Gemini extraction."""
+    # Dummy structure representing AI-extracted data
+    class StructuredData:
+        def __init__(self):
+            self.meeting_title = "Extracted Action Items"
+    return StructuredData()
+
+
+def push_meeting_notes_to_notion(structured_data, target_id=None):
+    """Placeholder function for pushing data to Notion via API."""
+    return f"https://www.notion.so/{target_id or 'default'}"
 
 
 # --- Session State Initialization ---
@@ -51,67 +64,132 @@ if "notion_destination" not in st.session_state:
     st.session_state["notion_destination"] = os.getenv("NOTION_URL", "")
 if "input_type" not in st.session_state:
     st.session_state["input_type"] = "URL"
+if "create_new_page" not in st.session_state:
+    st.session_state["create_new_page"] = False
+if "custom_title" not in st.session_state:
+    st.session_state["custom_title"] = ""
 
 # --- Sidebar Configuration ---
 with st.sidebar:
     st.header("⚙️ Notion Configuration")
 
-    # Toggle between URL and Page ID
-    input_type = st.radio(
-        "Input Method:",
-        ["URL", "Page ID"],
-        horizontal=True,
-        index=0 if st.session_state["input_type"] == "URL" else 1,
+    # Mode Selection: Sync to existing vs Create new page
+    mode = st.radio(
+        "Destination Mode:",
+        ["Sync to Existing Location", "Create New Notion Page"],
+        index=1 if st.session_state["create_new_page"] else 0,
     )
-    st.session_state["input_type"] = input_type
+    st.session_state["create_new_page"] = mode == "Create New Notion Page"
 
-    placeholder_text = (
-        "https://www.notion.so/..."
-        if input_type == "URL"
-        else "e.g., 18f28b49a15a80d49e7fc123456789ab"
+    st.divider()
+
+    # Optional Custom Title Override
+    custom_title_input = st.text_input(
+        "Custom Meeting Title (Optional)",
+        value=st.session_state["custom_title"],
+        placeholder="e.g., Q3 Strategy Review",
+        help="If provided, overrides the AI-extracted title."
     )
+    st.session_state["custom_title"] = custom_title_input.strip()
 
-    input_val = st.text_input(
-        f"Notion {input_type}",
-        value=st.session_state["notion_destination"],
-        placeholder=placeholder_text,
-        help=(
-            "Paste the full URL of your Notion page/database"
-            if input_type == "URL"
-            else "Paste the 32-character Notion Page or Database ID"
-        ),
-    )
+    if st.session_state["create_new_page"]:
+        st.subheader("📄 Create New Page Settings")
 
-    # Live validation feedback
-    if input_val:
-        if is_valid_notion_input(input_val, input_type):
-            extracted_id = extract_notion_id(input_val)
-            st.caption(f"✅ Valid format (Extracted ID: `{extracted_id}`) ")
-        else:
-            st.caption(f"❌ Invalid Notion {input_type} format")
+        input_type = st.radio(
+            "Parent Location Input Method:",
+            ["URL", "Page ID"],
+            horizontal=True,
+            index=0 if st.session_state["input_type"] == "URL" else 1,
+        )
+        st.session_state["input_type"] = input_type
 
-    if st.button("Save Notion Settings", use_container_width=True):
-        if is_valid_notion_input(input_val, input_type):
-            st.session_state["notion_destination"] = input_val
-            st.success(f"Notion {input_type} saved!")
-        else:
-            st.error(f"Please enter a valid Notion {input_type} before saving.")
+        parent_input_val = st.text_input(
+            f"Parent Notion {input_type}",
+            value=st.session_state["notion_destination"],
+            placeholder=(
+                "https://www.notion.so/..."
+                if input_type == "URL"
+                else "e.g., 18f28b49..."
+            ),
+            help=(
+                "Paste the URL or Page ID where the new subpage should be"
+                " created."
+            ),
+        )
+
+        if parent_input_val and is_valid_notion_input(
+            parent_input_val, input_type
+        ):
+            st.caption(
+                f"✅ Valid Parent ID: `{extract_notion_id(parent_input_val)}`"
+            )
+        elif parent_input_val:
+            st.caption(f"❌ Invalid Parent {input_type} format")
+
+        if st.button("Save Page Creation Settings", use_container_width=True):
+            if is_valid_notion_input(parent_input_val, input_type):
+                st.session_state["notion_destination"] = parent_input_val
+                st.success("Page creation settings saved!")
+            else:
+                st.error("Please provide a valid Parent location.")
+
+    else:
+        st.subheader("🎯 Existing Destination")
+        input_type = st.radio(
+            "Input Method:",
+            ["URL", "Page ID"],
+            horizontal=True,
+            index=0 if st.session_state["input_type"] == "URL" else 1,
+        )
+        st.session_state["input_type"] = input_type
+
+        input_val = st.text_input(
+            f"Notion {input_type}",
+            value=st.session_state["notion_destination"],
+            placeholder=(
+                "https://www.notion.so/..."
+                if input_type == "URL"
+                else "e.g., 18f28b49..."
+            ),
+            help="Paste the URL or Page ID of the target database or page.",
+        )
+
+        if input_val and is_valid_notion_input(input_val, input_type):
+            st.caption(
+                f"✅ Valid Format (ID: `{extract_notion_id(input_val)}`) "
+            )
+        elif input_val:
+            st.caption(f"❌ Invalid {input_type} format")
+
+        if st.button("Save Notion Settings", use_container_width=True):
+            if is_valid_notion_input(input_val, input_type):
+                st.session_state["notion_destination"] = input_val
+                st.success("Settings saved!")
+            else:
+                st.error("Please enter a valid Notion destination.")
 
     st.divider()
 
 st.title("📝 Meeting Notes to Notion")
 st.write(
-    "Upload a picture of your handwritten meeting notes, and AI will extract"
-    " the action items to Notion."
+    "Upload a picture or PDF of your meeting notes, and AI will extract the"
+    " action items to Notion."
 )
 
-# Display active target status
+# Active Target Information
 active_dest = st.session_state["notion_destination"]
 current_type = st.session_state["input_type"]
 active_id = extract_notion_id(active_dest)
+create_page_mode = st.session_state["create_new_page"]
+custom_title = st.session_state["custom_title"]
 
 if active_dest and is_valid_notion_input(active_dest, current_type):
-    st.caption(f"🎯 Target Page/Database ID: `{active_id}`")
+    if create_page_mode:
+        st.info(
+            f"🆕 **Mode:** Create new subpages inside parent ID `{active_id}`"
+        )
+    else:
+        st.caption(f"🎯 **Mode:** Sync directly to target ID `{active_id}`")
 else:
     st.warning(
         "⚠️ No valid Notion destination configured. Please set up your"
@@ -124,25 +202,26 @@ col1, col2 = st.columns([1, 1], gap="large")
 with col1:
     st.subheader("1. Upload Notes")
     uploaded_files = st.file_uploader(
-        "Choose images of your notes",
-        type=["jpg", "jpeg", "png"],
+        "Choose images or PDFs of your notes",
+        type=["jpg", "jpeg", "png", "pdf"],
         accept_multiple_files=True,
-        help=(
-            "Supports clear photos of whiteboards, notebooks, or typed"
-            " documents."
-        ),
+        help="Supports photos (JPG/PNG) and PDF documents.",
     )
 
     if uploaded_files:
         st.write(f"**{len(uploaded_files)} file(s) uploaded:**")
         for file in uploaded_files:
-            st.image(file, caption=file.name, use_container_width=True)
+            if file.name.lower().endswith(".pdf"):
+                reader = PdfReader(file)
+                st.write(f"📄 **{file.name}** ({len(reader.pages)} page[s])")
+            else:
+                st.image(file, caption=file.name, use_container_width=True)
 
 with col2:
     st.subheader("2. Extract & Sync")
 
     if not uploaded_files:
-        st.info("👈 Upload one or more images on the left to get started.")
+        st.info("👈 Upload one or more files on the left to get started.")
     elif not active_dest or not is_valid_notion_input(
         active_dest, current_type
     ):
@@ -151,32 +230,41 @@ with col2:
             " processing."
         )
     else:
-        st.success(f"{len(uploaded_files)} image(s) ready for processing.")
+        st.success(f"{len(uploaded_files)} file(s) ready for processing.")
 
         target_status = st.selectbox(
             "Default Status in Notion", ["To Do", "In Progress"]
         )
 
-        if st.button(
-            "🚀 Process All & Push to Notion",
-            type="primary",
-            use_container_width=True,
-        ):
-            with st.status(
-                "Processing your notes...", expanded=True
-            ) as status:
+        button_label = (
+            "🚀 Create Page & Push Items"
+            if create_page_mode
+            else "🚀 Process All & Push to Notion"
+        )
+
+        if st.button(button_label, type="primary", use_container_width=True):
+            with st.status("Processing your notes...", expanded=True) as status:
+
                 for index, file in enumerate(uploaded_files, start=1):
                     st.write(
-                        f"🔍 Reading image {index}/{len(uploaded_files)}"
+                        f"🔍 Reading file {index}/{len(uploaded_files)}"
                         f" ({file.name})..."
                     )
-                    # action_items = extract_action_items(file)
 
-                    st.write(
-                        f"📤 Exporting items from {file.name} to Notion ID"
-                        f" `{active_id}`..."
-                    )
-                    # send_to_notion(action_items, target_id=active_id)
+                    # Execute Gemini extraction
+                    structured_data = parse_handwritten_notes(file)
+
+                    # Override the AI-generated title if the user provided a specific one
+                    if custom_title:
+                        # Appending the file name ensures unique titles during batch processing
+                        structured_data.meeting_title = f"{custom_title} ({file.name})"
+
+                    st.write(f"📤 Exporting items from {file.name} to Notion...")
+
+                    # Execute Notion sync using the modified payload
+                    notion_url = push_meeting_notes_to_notion(structured_data, target_id=active_id)
+
+                    st.write(f"✅ Exported: [{file.name}]({notion_url})")
 
                 status.update(
                     label="All files processed and pushed to Notion!",
