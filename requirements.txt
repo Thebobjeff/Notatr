@@ -1,6 +1,7 @@
 streamlit
-google-generativeai
+google-genai
 notion-client
 pydantic
 python-dotenv
 pillow
+pandas
